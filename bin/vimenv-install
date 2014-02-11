@@ -3,6 +3,7 @@
 set -e
 
 VIM_SOURCE="$VIMENV_ROOT"/src
+OPT_LIST_ALL=0
 scm_type=hg
 detect_scm_types="hg git"
 
@@ -26,6 +27,7 @@ echoyellow() {
 ### }}}
 
 ### scm functions {{{
+### scm utils {{{
 detect_scm_type() {
   if [ -e "$VIM_SOURCE" ]; then
     for type in $detect_scm_types; do
@@ -43,6 +45,14 @@ detect_scm_type() {
   done
 }
 
+tag2ver_filter() {
+  sed -e 's/-/./g'
+}
+
+ver2tag_filter() {
+  sed -e 's/\./-/g'
+}
+
 is_need_update() {
   local cwd=`pwd`
   local here="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
@@ -56,33 +66,26 @@ is_need_update() {
   fi
   return 1
 }
+### }}}
 
+### build utils {{{
 source_setenv() {
   [ -e "$VIMENV_ROOT/share/setenv" ] && source "$VIMENV_ROOT/share/setenv"
 }
 
 apply_patches() {
   if [ -e "$VIMENV_ROOT/share/p1_patches" ] ;then
-    pwd
     for url in `cat "$VIMENV_ROOT/share/p1_patches" | grep -v '^#'`; do
       curl -Ls -o _patch "$url"
       if ! patch -p1 < _patch ; then
         rm _patch
-        echored "fail apply patch: $url" >&2
+        echored "fail: applied patch: $url" >&2
         exit 1
       fi
       rm _patch
-      echogreen "patched: $url"
+      echogreen "applied patch: $url"
     done
   fi
-}
-
-tag2ver_filter() {
-  sed -e 's/-/./g'
-}
-
-ver2tag_filter() {
-  sed -e 's/\./-/g'
 }
 
 configure_option() {
@@ -94,6 +97,7 @@ configure_option() {
   [ -e "$VIMENV_ROOT/share/option" ] && fpath="$VIMENV_ROOT/share/option"
   cat $fpath | sed -e 's/\\$//g' | grep -v '^#'
 }
+### }}}
 
 ### interface functions {{{
 source_clone() {
@@ -108,7 +112,14 @@ source_update() {
 }
 
 source_tags() {
-  ${scm_type}_tags "$@" | tag2ver_filter
+  local cwd=`pwd`
+  cd "$VIM_SOURCE"
+  if [ "$OPT_LIST_ALL" = "0" ]; then
+    ${scm_type}_tags "$@" | tag2ver_filter
+  else
+    ${scm_type}_tags all "$@" | tag2ver_filter
+  fi
+  cd "$cwd"
 }
 source_checkout() {
   local rev=`echo "$1" | ver2tag_filter`
@@ -150,7 +161,7 @@ hg_clone() {
   hg clone https://vim.googlecode.com/hg "$VIM_SOURCE"
 }
 hg_reset() {
-  hg reset HEAD --hard >/dev/null 2>&1
+  hg update --clean >/dev/null 2>&1
 }
 hg_update() {
   hg pull -u
@@ -239,7 +250,6 @@ clean() {
   fi
 }
 # }}}
-
 
 detect_scm_type
 O_FLG=1
