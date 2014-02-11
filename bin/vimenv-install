@@ -1,24 +1,184 @@
-#!/bin/sh
+#!/bin/bash
 # debug
 set -e
-[ -n "$VIMENV_DEBUG" ] && set -x
 
+VIM_SOURCE="$VIMENV_ROOT"/src
+scm_type=hg
+detect_scm_types="hg git"
+
+[ -n "$VIMENV_DEBUG" ] && set -x
 if [ ! -d "$VIMENV_ROOT"/versions ]; then
   mkdir "$VIMENV_ROOT"/versions
 fi
 
 # set configure
-VIM_SOURCE="$VIMENV_ROOT"/src
-if [ -e "$VIM_SOURCE" ]; then
-  rm -rf "$VIM_SOURCE"/*
-else
-  mkdir "$VIM_SOURCE"
-fi
+
+### util functions {{{
+echored() {
+  echo -e "\e[00;31m$*\e[00m"
+}
+echogreen() {
+  echo -e "\e[00;32m$*\e[00m"
+}
+echoyellow() {
+  echo -e "\e[00;33m$*\e[00m"
+}
+### }}}
+
+### scm functions {{{
+detect_scm_type() {
+  if [ -e "$VIM_SOURCE" ]; then
+    for type in $detect_scm_types; do
+      if [ -e "$VIM_SOURCE/.$type" ]; then
+        scm_type=$type
+        return
+      fi
+    done
+  fi
+  for type in $detect_scm_types; do
+    if which $type >/dev/null 2>&1 ;then
+      scm_type=$type
+      return
+    fi
+  done
+}
+
+is_need_update() {
+  local cwd=`pwd`
+  local here="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
+  cd "$cwd"
+
+  local todayfile="$here/../tmp/run-`date +'%Y%m%d'`"
+  if [ ! -e "$todayfile" ]; then
+    find "$here/../tmp/" -type f -name 'run-*' -mtime 0 -exec rm {} \;
+    touch $todayfile
+    return 0
+  fi
+  return 1
+}
+
+source_setenv() {
+  [ -e "$VIMENV_ROOT/share/setenv" ] && source "$VIMENV_ROOT/share/setenv"
+}
+
+apply_patches() {
+  if [ -e "$VIMENV_ROOT/share/p1_patches" ] ;then
+    pwd
+    for url in `cat "$VIMENV_ROOT/share/p1_patches" | grep -v '^#'`; do
+      curl -Ls -o _patch "$url"
+      if ! patch -p1 < _patch ; then
+        rm _patch
+        echored "fail apply patch: $url" >&2
+        exit 1
+      fi
+      rm _patch
+      echogreen "patched: $url"
+    done
+  fi
+}
+
+tag2ver_filter() {
+  sed -e 's/-/./g'
+}
+
+ver2tag_filter() {
+  sed -e 's/\./-/g'
+}
+
+configure_option() {
+  local cwd=`pwd`
+  local here="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
+  cd "$cwd"
+
+  local fpath="$here/../share/option"
+  [ -e "$VIMENV_ROOT/share/option" ] && fpath="$VIMENV_ROOT/share/option"
+  cat $fpath | sed -e 's/\\$//g' | grep -v '^#'
+}
+
+### interface functions {{{
+source_clone() {
+  ${scm_type}_clone "$@"
+}
+
+source_update() {
+  ${scm_type}_reset
+  if is_need_update; then
+    ${scm_type}_update "$@"
+  fi
+}
+
+source_tags() {
+  ${scm_type}_tags "$@" | tag2ver_filter
+}
+source_checkout() {
+  local rev=`echo "$1" | ver2tag_filter`
+  shift
+  ${scm_type}_checkout "$rev" "$@"
+}
+### }}}
+
+## git functions {{{
+git_clone() {
+  git clone "https://github.com/vim-jp/vim.git" $VIM_SOURCE
+}
+git_reset() {
+  git reset HEAD --hard >/dev/null 2>&1
+}
+git_update() {
+  git pull origin master
+}
+git_tags() {
+  if [ x"$1" = x ]; then
+    git tag | grep -ve "-[0-9][a-z]" | tail -n 20
+  elif [ x"$1" = x"all" ]; then
+    git tag
+  else
+    git tag | tail -n $1
+  fi
+}
+git_checkout() {
+  if [ x"$1" = x -o x"$1" = x"latest" ]; then
+    git checkout master
+  else
+    git checkout "$1"
+  fi
+}
+### }}}
+
+### hg functions {{{
+hg_clone() {
+  hg clone https://vim.googlecode.com/hg "$VIM_SOURCE"
+}
+hg_reset() {
+  hg reset HEAD --hard >/dev/null 2>&1
+}
+hg_update() {
+  hg pull -u
+}
+hg_tags() {
+  if [ x"$1" = x ]; then
+    hg tags | head -n 20 | awk '{print $1}'
+  elif [ x"$1" = x"all" ]; then
+    hg tags | awk '{print $1}'
+  else
+    hg tags | head -n $1 | awk '{print $1}'
+  fi
+}
+hg_checkout() {
+  if [ x"$1" = x -o x"$1" = x"latest" ]; then
+    hg update
+  else
+    hg update -C "$1"
+  fi
+}
+### }}}
+
+### }}}
 
 ### function {{{
 # error usage
 usage_exit() {
-  echo "Usage: vimenv install [-f tar.gz] [-o dir] -- [options...]" 1>&2
+  echo "Usage: vimenv install [-f tar.gz] [-o dir] -- [version]" 1>&2
   exit 1
 }
 
@@ -29,35 +189,63 @@ not_remove_file() {
 }
 
 # select build source
-select_mode() {
+install_source() {
+  local cwd=`pwd`
   if [ $F_FLG -ne 0 ]; then
-    hg clone https://vim.googlecode.com/hg "$VIM_SOURCE"
+    if [ ! -e "$VIM_SOURCE" ]; then
+      source_clone
+    fi
+
+    cd "$VIM_SOURCE"
+    source_update
   else
+    [ -e "$VIM_SOURCE" ] && mv $VIM_SOURCE $VIM_SOURCE.${scm_type}
     tar xvf "$VIM_ARCHIVE" -C "$VIM_SOURCE"
     cd $(find "$VIM_SOURCE" -mindepth 1 -maxdepth 1 -type d |sed 1q)
     cp -rp ./ "$VIM_SOURCE"
     # find "$VIM_SOURCE" -mindepth 2 -exec mv {} -t "$VIM_SOURCE" \;
   fi
+  cd "$cwd"
 }
 
 # configure
 configure() {
-  ./configure --prefix=$VIMENV_ROOT/versions/"$VIM_VERSION" $OPT_CONFIG
+  source_checkout $VIM_VERSION
+  source_setenv
+  apply_patches
+  make distclean >/dev/null 2>&1
+  ./configure --prefix=$VIMENV_ROOT/versions/"$VIM_VERSION" `configure_option`
 }
 
+build() {
+  if make -f "$VIM_SOURCE"/Makefile && make install; then
+    return 0
+  fi
+  return 1
+}
+
+# restore repository source
+finalize() {
+  if [ -e "$VIM_SOURCE.{$scm_type}" ] ;then
+    rm -rf "$VIM_SOURCE"
+    mv "$VIM_SOURCE.${scm_type}" "$VIM_SOURCE"
+  fi
+}
 # remove source directory
 clean() {
   if [ -e "$VIM_SOURCE" ]; then
     rm -rf "$VIM_SOURCE"
+    echo "removed: $VIM_SOURCE"
   fi
 }
 # }}}
 
 
+detect_scm_type
 O_FLG=1
 F_FLG=1
-# set options
-while getopts "f:o:" OPT
+# set options {{{
+while getopts "f:o:cl" OPT
 do
   case $OPT in
     o)
@@ -68,6 +256,15 @@ do
       VIM_ARCHIVE="$OPTARG"
       F_FLG=0
       ;;
+    l)
+      install_source
+      source_tags
+      exit 0
+      ;;
+    c)
+      clean
+      exit 0
+      ;;
     *)
       usage_exit
       ;;
@@ -76,14 +273,26 @@ done
 
 # delete options
 shift `expr $OPTIND - 1`
-OPT_CONFIG="$@"
+# OPT_CONFIG="$@"
+# }}}
+
+if [ "$VIM_VERSION" = "" ]; then
+  VIM_VERSION="$1"
+  if [ "$VIM_VERSION" = "" ]; then
+    usage_exit
+  fi
+  shift
+fi
 
 # set argument
 if [ $O_FLG -eq 0 -a ! -n "$VIM_VERSION" ]; then
   usage_exit
 fi
-if [ $O_FLG -ne 0 ]; then
+if [ $O_FLG -ne 0 -a "$VIM_VERSION" = "" ]; then
   VIM_VERSION="vim"
+  if [ $F_FLG -ne 0 ]; then
+    usage_exit
+  fi
 fi
 
 if [ $F_FLG -eq 0 -a ! -n "$VIM_ARCHIVE" ]; then
@@ -93,7 +302,7 @@ fi
 if [ -e "$VIMENV_ROOT"/versions/"$VIM_VERSION" ]; then
   while /bin/true
   do
-    "Can I delete directory?[yes|no]"
+    echo "Can I delete directory?[yes|no]"
     read ans
 
     case ${ans} in
@@ -106,7 +315,7 @@ if [ -e "$VIMENV_ROOT"/versions/"$VIM_VERSION" ]; then
         break
         ;;
       *)
-        not_remove_file 
+        not_remove_file
         break
         ;;
     esac
@@ -114,8 +323,8 @@ if [ -e "$VIMENV_ROOT"/versions/"$VIM_VERSION" ]; then
 fi
 
 # select source
-select_mode
+install_source
 
-trap clean EXIT
-cd "$VIM_SOURCE" 
-configure && make -f "$VIM_SOURCE"/Makefile && make install && clean
+trap finalize EXIT
+cd "$VIM_SOURCE"
+configure && build && finalize

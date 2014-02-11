@@ -8,8 +8,8 @@ vim-build - vim builder
   1. install as vimenv plugin
     $ git clone git://gihub.com/yasu-n/vim-build.git ~/.vimenv/plugins/vim-build
 
-  2. install latest version vim binary
-    $ vimenv install -- <configure-options>
+  2. install specific version vim binary
+    $ vimenv install <version>
 
     if you install from tarball, using -f option
     
@@ -19,8 +19,20 @@ vim-build - vim builder
     $ vimenv install -o <output_directory>
        vim binary was output ~/.vimenv/versions/<output_directory>
 
-  4. add options and install specified output directory.
-    $ vimenv install -o hoge -- --with-compiledby="foo <foo@example.com>"
+  4. if you want to customize configure options, please edit ~/.vimenv/share/option
+     (default option is located at vim-build/share/option)
+    $ mkdir ~/.vimenv/share
+    $ vim ~/.vimenv/share/option
+    $ vimenv install v7.4.169
+  5. if you want to apply patch, please edit ~/.vimenv/share/p1_patches.
+     you must write the urls of patch file on p1_patches.
+    $ mkdir ~/.vimenv/share
+    $ vim ~/.vimenv/share/p1_patches
+    $ vimenv install v7.4.169
+  6. if you want to set variables, please edit ~/.vimenv/share/setenv
+    $ mkdir ~/.vimenv/share
+    $ vim ~/.vimenv/share/setenv
+    $ vimenv install v7.4.169
 ```
 
 # DESCRIPTION
