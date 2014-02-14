@@ -69,8 +69,38 @@ is_need_update() {
 ### }}}
 
 ### build utils {{{
+is_osx() {
+  return $([ "$(uname -s)" = "Darwin" ])
+}
+
+prefer_filepath() {
+  local relpath=$1
+  if [ x"$relpath" = x ]; then
+    return
+  fi
+
+  local cwd=`pwd`
+  local here="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
+  cd "$cwd"
+
+  if is_osx && [ -e "$here/../$relpath.osx" ]; then
+    echo "$here/../$relpath.osx"
+    return
+  fi
+  if [ -e "$here/../$relpath" ]; then
+    echo "$here/../$relpath"
+    return
+  fi
+  if is_osx && [ -e "$VIMENV_ROOT/$relpath.osx" ]; then
+    echo "$VIMENV_ROOT/$relpath.osx"
+    return
+  fi
+  echo "$VIMENV_ROOT/$relpath"
+}
+
 source_setenv() {
-  [ -e "$VIMENV_ROOT/share/setenv" ] && source "$VIMENV_ROOT/share/setenv"
+  local fpath=$(prefer_filepath "share/setenv")
+  [ -e "$fpath" ] && source "$fpath"
 }
 
 apply_patches() {
@@ -93,8 +123,7 @@ configure_option() {
   local here="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
   cd "$cwd"
 
-  local fpath="$here/../share/option"
-  [ -e "$VIMENV_ROOT/share/option" ] && fpath="$VIMENV_ROOT/share/option"
+  local fpath=$(prefer_filepath "share/option")
   cat $fpath | sed -e 's/\\$//g' | grep -v '^#'
 }
 ### }}}
@@ -310,7 +339,7 @@ if [ $F_FLG -eq 0 -a ! -n "$VIM_ARCHIVE" ]; then
 fi
 
 if [ -e "$VIMENV_ROOT"/versions/"$VIM_VERSION" ]; then
-  while /bin/true
+  while true
   do
     echo "Can I delete directory?[yes|no]"
     read ans

@@ -1,0 +1,15 @@
+--with-features=huge
+--enable-multibyte
+--with-tlib=ncurses
+--enable-cscope
+--enable-gui=no
+--without-x
+--enable-rubyinterp
+--enable-pythoninterp
+--enable-python3interp
+--enable-perlinterp
+--enable-tclinterp
+--enable-mzschemeinterp
+--enable-luainterp
+--with-luajit
+--with-lua-prefix=/usr/local
