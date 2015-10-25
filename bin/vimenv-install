@@ -2,11 +2,13 @@
 # debug
 set -e
 
+# default settings {{{1
 VIM_SOURCE="$VIMENV_ROOT"/src
 OPT_LIST_ALL=0
-scm_type=hg
-detect_scm_types="hg git"
+scm_type=git
+detect_scm_types="git git-vimjp"
 
+# init {{{1
 [ -n "$VIMENV_DEBUG" ] && set -x
 if [ ! -d "$VIMENV_ROOT"/versions ]; then
   mkdir "$VIMENV_ROOT"/versions
@@ -14,7 +16,7 @@ fi
 
 # set configure
 
-### util functions {{{
+### util functions {{{1
 echored() {
   echo -e "\e[00;31m$*\e[00m"
 }
@@ -24,10 +26,9 @@ echogreen() {
 echoyellow() {
   echo -e "\e[00;33m$*\e[00m"
 }
-### }}}
 
-### scm functions {{{
-### scm utils {{{
+### scm functions {{{1
+### scm utils {{{2
 detect_scm_type() {
   if [ -e "$VIM_SOURCE" ]; then
     for type in $detect_scm_types; do
@@ -66,9 +67,8 @@ is_need_update() {
   fi
   return 1
 }
-### }}}
 
-### build utils {{{
+### build utils {{{2
 is_osx() {
   return $([ "$(uname -s)" = "Darwin" ])
 }
@@ -126,9 +126,8 @@ configure_option() {
   local fpath=$(prefer_filepath "share/option")
   cat $fpath | sed -e 's/\\$//g' | grep -v '^#'
 }
-### }}}
 
-### interface functions {{{
+### interface functions {{{2
 source_clone() {
   ${scm_type}_clone "$@"
 }
@@ -151,15 +150,15 @@ source_tags() {
   cd "$cwd"
 }
 source_checkout() {
-  local rev=`echo "$1" | ver2tag_filter`
+  local rev="$1"
+  # local rev=`echo "$1" | ver2tag_filter`
   shift
   ${scm_type}_checkout "$rev" "$@"
 }
-### }}}
 
-## git functions {{{
+## git functions {{{2
 git_clone() {
-  git clone "https://github.com/vim-jp/vim.git" $VIM_SOURCE
+  git clone "https://github.com/vim/vim.git" $VIM_SOURCE
 }
 git_reset() {
   git reset HEAD --hard >/dev/null 2>&1
@@ -170,11 +169,11 @@ git_update() {
 git_tags() {
   local versions
   if [ x"$1" = x ]; then
-    versions=`git tag | grep -ve "-[0-9][a-z]" | tail -n 20`
+    versions=`git tag | grep -v 'v7.0' | sort -V | grep -ve "-[0-9][a-z]" | tail -n 20`
   elif [ x"$1" = x"all" ]; then
-    versions=`git tag`
+    versions=`git tag | grep -v 'v7.0' | sort -V`
   else
-    versions=`git tag | tail -n $1`
+    versions=`git tag | grep -v 'v7.0' | sort -V | tail -n $1`
   fi
   echo $versions
 }
@@ -185,41 +184,37 @@ git_checkout() {
     git checkout "$1"
   fi
 }
-### }}}
 
-### hg functions {{{
-hg_clone() {
-  hg clone https://vim.googlecode.com/hg "$VIM_SOURCE"
+## git-vimjp functions {{{2
+git-vimjp_clone() {
+  git clone "https://github.com/vim-jp/vim.git" $VIM_SOURCE
 }
-hg_reset() {
-  hg update --clean >/dev/null 2>&1
+git-vimjp_reset() {
+  git reset HEAD --hard >/dev/null 2>&1
 }
-hg_update() {
-  hg pull -u
+git-vimjp_update() {
+  git pull origin master
 }
-hg_tags() {
+git-vimjp_tags() {
   local versions
   if [ x"$1" = x ]; then
-    versions=`hg tags | grep -v start | grep -v tip | head -n 20 | awk '{print $1}'`
+    versions=`git tag | grep -v 'v7.0' | sort -Vr | grep -ve "-[0-9][a-z]" | tail -n 20`
   elif [ x"$1" = x"all" ]; then
-    versions=`hg tags | grep -v start | grep -v tip | awk '{print $1}'`
+    versions=`git tag | grep -v 'v7.0$' | sort -Vr`
   else
-    versions=`hg tags | grep -v start | grep -v tip | head -n $1 | awk '{print $1}'`
+    versions=`git tag | grep -v 'v7.0$' | sort -Vr | tail -n $1`
   fi
   echo $versions
 }
-hg_checkout() {
+git-vimjp_checkout() {
   if [ x"$1" = x -o x"$1" = x"latest" ]; then
-    hg update
+    git checkout master
   else
-    hg update -C "$1"
+    git checkout "$1"
   fi
 }
-### }}}
 
-### }}}
-
-### function {{{
+### function {{{1
 # error usage
 usage_exit() {
   echo "Usage: vimenv install [-f tar.gz] [-o dir] -- [version]" 1>&2
@@ -282,8 +277,8 @@ clean() {
     echo "removed: $VIM_SOURCE"
   fi
 }
-# }}}
 
+# main {{{1
 detect_scm_type
 O_FLG=1
 F_FLG=1
@@ -371,3 +366,5 @@ install_source
 trap finalize EXIT
 cd "$VIM_SOURCE"
 configure && build && finalize
+
+# __END__ {{{1
