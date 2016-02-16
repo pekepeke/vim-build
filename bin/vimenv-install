@@ -61,7 +61,7 @@ is_need_update() {
 
   local todayfile="$here/../tmp/run-`date +'%Y%m%d'`"
   if [ ! -e "$todayfile" ]; then
-    find "$here/../tmp/" -type f -name 'run-*' -mtime 0 -exec rm {} \;
+    find "$here/../tmp/" -type f -name 'run-*' -mtime +0 -exec rm {} \;
     touch $todayfile
     return 0
   fi
@@ -164,6 +164,7 @@ git_reset() {
   git reset HEAD --hard >/dev/null 2>&1
 }
 git_update() {
+  git fetch --all --prune
   git pull origin master
 }
 git_tags() {
