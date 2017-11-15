@@ -1,4 +1,5 @@
 --with-features=huge
+--enable-shared
 --enable-multibyte
 --enable-gui=gtk2
 --enable-rubyinterp
